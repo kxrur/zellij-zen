@@ -6,6 +6,8 @@ A tiny [Zellij](https://zellij.dev) plugin that toggles the visibility of the
 
 Press a single keybind to hide both bars, press it again to bring them back.
 
+![zellij-zen demo](assets/zen.gif)
+
 ## Install
 
 No manual download needed: Zellij fetches the prebuilt `.wasm` from the release
