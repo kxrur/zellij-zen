@@ -14,6 +14,11 @@ back.
 No manual download needed: Zellij fetches the prebuilt `.wasm` from the release
 URL below and caches it.
 
+> **Note:** Zellij caches `https://` plugins **by URL**, so a `…/latest/…`
+> URL keeps serving the first version it downloaded. The snippets below use a
+> *versioned* URL — bump the version to pick up a new release (or clear the
+> Zellij plugin cache).
+
 `zellij-zen` runs as a **background plugin**: load it once at startup, then
 trigger it from a keybind. This keeps the toggle instant and avoids spawning a
 pane on every press.
@@ -22,7 +27,7 @@ pane on every press.
 
 ```kdl
 load_plugins {
-    "https://github.com/kxrur/zellij-zen/releases/latest/download/zellij-zen.wasm"
+    "https://github.com/kxrur/zellij-zen/releases/download/v0.2.0/zellij-zen.wasm"
 }
 ```
 
@@ -30,7 +35,7 @@ load_plugins {
 
 ```kdl
 bind "Alt v" {
-    MessagePlugin "https://github.com/kxrur/zellij-zen/releases/latest/download/zellij-zen.wasm" {
+    MessagePlugin "https://github.com/kxrur/zellij-zen/releases/download/v0.2.0/zellij-zen.wasm" {
         name "toggle"
     }
 }
