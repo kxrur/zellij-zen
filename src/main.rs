@@ -1,11 +1,18 @@
 use std::collections::BTreeMap;
+
+use kdl::{KdlDocument, KdlNode};
 use zellij_tile::prelude::*;
 
 register_plugin!(State);
 
+const TAB_BAR: &str = "zellij:tab-bar";
+const STATUS_BAR: &str = "zellij:status-bar";
+
 #[derive(Default)]
 struct State {
-    manifest: Option<PaneManifest>,
+    // Whether zen mode is currently active (bars hidden). `None` until the first
+    // toggle, at which point it is derived from the live session layout.
+    zen: Option<bool>,
 }
 
 impl ZellijPlugin for State {
@@ -14,14 +21,6 @@ impl ZellijPlugin for State {
             PermissionType::ReadApplicationState,
             PermissionType::ChangeApplicationState,
         ]);
-        subscribe(&[EventType::PaneUpdate]);
-    }
-
-    fn update(&mut self, event: Event) -> bool {
-        if let Event::PaneUpdate(manifest) = event {
-            self.manifest = Some(manifest);
-        }
-        false
     }
 
     fn pipe(&mut self, message: PipeMessage) -> bool {
@@ -36,42 +35,130 @@ impl ZellijPlugin for State {
 
 impl State {
     fn toggle_bars(&mut self) {
-        let Some(manifest) = self.manifest.as_ref() else {
+        // We toggle the bars by rewriting the session layout and applying it with
+        // `override_layout`, rather than suppressing the bar panes. Suppressed panes
+        // are dropped by Zellij's session serializer, which used to make zen mode
+        // impossible to undo after a session was saved/restored.
+        let Ok((layout, _)) = dump_session_layout() else {
+            return;
+        };
+        let Ok(mut document) = layout.parse::<KdlDocument>() else {
             return;
         };
 
-        // Keep tab-bars and status-bars separate so we can always (un)suppress
-        // them in a stable order: tab-bar(s) first, then status-bar(s). The
-        // order the manifest reports them in is not stable after suppression,
-        // and restoring the status-bar before the tab-bar misplaces them.
-        let mut tab_bars: Vec<PaneId> = Vec::new();
-        let mut status_bars: Vec<PaneId> = Vec::new();
-        let mut any_hidden = false;
+        let bars_present = document
+            .nodes()
+            .iter()
+            .find(|node| node.name().value() == "layout")
+            .map(|layout_node| tab_nodes(layout_node).any(has_bars))
+            .unwrap_or(false);
 
-        for panes in manifest.panes.values() {
-            for pane in panes {
-                match pane.plugin_url.as_deref() {
-                    Some("tab-bar") | Some("zellij:tab-bar") => {
-                        tab_bars.push(PaneId::Plugin(pane.id));
-                        any_hidden = any_hidden || pane.is_suppressed;
-                    },
-                    Some("status-bar") | Some("zellij:status-bar") => {
-                        status_bars.push(PaneId::Plugin(pane.id));
-                        any_hidden = any_hidden || pane.is_suppressed;
-                    },
-                    _ => {},
-                }
-            }
-        }
+        // On the first toggle, infer the current state from the layout: if the bars
+        // are present, zen mode is currently off.
+        let was_zen = self.zen.unwrap_or(!bars_present);
+        let zen = !was_zen;
+        self.zen = Some(zen);
 
-        let hide = !any_hidden;
+        let Some(layout_node) = document
+            .nodes_mut()
+            .iter_mut()
+            .find(|node| node.name().value() == "layout")
+        else {
+            return;
+        };
 
-        for id in tab_bars.into_iter().chain(status_bars) {
-            if hide {
-                hide_pane_with_id(id);
+        for tab in tab_nodes_mut(layout_node) {
+            if zen {
+                remove_bars(tab);
             } else {
-                show_pane_with_id(id, false, false);
+                insert_bars(tab);
             }
         }
+
+        override_layout(
+            LayoutInfo::Stringified(document.to_string()),
+            true,  // retain existing terminal panes (and their contents)
+            false, // drop the bar panes we removed from the layout
+            false, // apply to every tab
+            BTreeMap::new(),
+        );
+    }
+}
+
+fn tab_nodes(layout_node: &KdlNode) -> impl Iterator<Item = &KdlNode> {
+    layout_node
+        .children()
+        .into_iter()
+        .flat_map(|children| children.nodes())
+        .filter(|node| node.name().value() == "tab")
+}
+
+fn tab_nodes_mut(layout_node: &mut KdlNode) -> impl Iterator<Item = &mut KdlNode> {
+    layout_node
+        .children_mut()
+        .as_mut()
+        .into_iter()
+        .flat_map(|children| children.nodes_mut().iter_mut())
+        .filter(|node| node.name().value() == "tab")
+}
+
+fn plugin_location(pane: &KdlNode) -> Option<&str> {
+    pane.children()
+        .into_iter()
+        .flat_map(|children| children.nodes())
+        .find(|node| node.name().value() == "plugin")
+        .and_then(|plugin| plugin.get("location"))
+        .and_then(|entry| entry.value().as_string())
+}
+
+fn is_bar_pane(node: &KdlNode) -> bool {
+    if node.name().value() != "pane" {
+        return false;
+    }
+    let location = plugin_location(node);
+    location == Some(TAB_BAR)
+        || location == Some(STATUS_BAR)
+        || location == Some("tab-bar")
+        || location == Some("status-bar")
+}
+
+fn has_bars(tab: &KdlNode) -> bool {
+    tab.children()
+        .into_iter()
+        .flat_map(|children| children.nodes())
+        .any(is_bar_pane)
+}
+
+fn bar_pane(location: &str) -> KdlNode {
+    let mut plugin = KdlNode::new("plugin");
+    plugin.insert("location", location);
+
+    let mut children = KdlDocument::new();
+    children.nodes_mut().push(plugin);
+
+    let mut pane = KdlNode::new("pane");
+    pane.insert("size", 1i64);
+    pane.insert("borderless", true);
+    pane.set_children(children);
+    pane
+}
+
+fn insert_bars(tab: &mut KdlNode) {
+    let children = tab.ensure_children();
+    let nodes = children.nodes_mut();
+
+    // tab-bar goes at the very top, status-bar at the very bottom (before any
+    // floating panes node if one exists).
+    nodes.insert(0, bar_pane(TAB_BAR));
+    let insert_at = nodes
+        .iter()
+        .position(|node| node.name().value() == "floating_panes")
+        .unwrap_or(nodes.len());
+    nodes.insert(insert_at, bar_pane(STATUS_BAR));
+}
+
+fn remove_bars(tab: &mut KdlNode) {
+    if let Some(children) = tab.children_mut() {
+        children.nodes_mut().retain(|node| !is_bar_pane(node));
     }
 }

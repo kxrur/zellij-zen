@@ -23,11 +23,16 @@ URL below and caches it.
 trigger it from a keybind. This keeps the toggle instant and avoids spawning a
 pane on every press.
 
+The toggle works by rewriting the session layout (adding/removing the bar panes)
+and applying it, rather than suppressing the bars. This means the state survives
+session serialization: a session saved while zen is on can always be restored
+with another toggle.
+
 ### 1. Load it at startup
 
 ```kdl
 load_plugins {
-    "https://github.com/kxrur/zellij-zen/releases/download/v0.2.0/zellij-zen.wasm"
+    "https://github.com/kxrur/zellij-zen/releases/download/v0.3.0/zellij-zen.wasm"
 }
 ```
 
@@ -35,7 +40,7 @@ load_plugins {
 
 ```kdl
 bind "Alt v" {
-    MessagePlugin "https://github.com/kxrur/zellij-zen/releases/download/v0.2.0/zellij-zen.wasm" {
+    MessagePlugin "https://github.com/kxrur/zellij-zen/releases/download/v0.3.0/zellij-zen.wasm" {
         name "toggle"
     }
 }
@@ -46,8 +51,8 @@ bind "Alt v" {
 The first time the plugin loads (i.e. when you start a session after adding it),
 Zellij will ask you to grant two permissions:
 
-- `ReadApplicationState` — to inspect the current panes
-- `ChangeApplicationState` — to hide/show the bar panes
+- `ReadApplicationState` — to read the current session layout
+- `ChangeApplicationState` — to apply the modified layout
 
 Answer `y` once. The grant is cached, so future sessions run the toggle without
 asking again.
@@ -63,9 +68,12 @@ The plugin is written to `target/wasm32-wasip1/release/zellij-zen.wasm`.
 
 ## Known issues
 
+- Tabs created while zen mode is on will show their bars until the next toggle.
+  New tabs are built from the session's `new_tab_template`, which the plugin
+  cannot override.
 - After toggling, Zellij may reset a tab's auto-derived name (e.g. the current
   directory) back to its default (`Tab #1`). This happens in Zellij itself when
-  bar panes are suppressed/restored and isn't controlled by the plugin.
+  the layout is re-applied and isn't controlled by the plugin.
 
 ## License
 

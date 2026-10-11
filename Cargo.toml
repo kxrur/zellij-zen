@@ -1,6 +1,6 @@
 [package]
 name = "zellij-zen"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "A Zellij plugin to toggle the tab-bar and status-bar visibility"
@@ -8,3 +8,4 @@ repository = "https://github.com/kxrur/zellij-zen"
 
 [dependencies]
 zellij-tile = "0.45.1"
+kdl = "4.7.1"
