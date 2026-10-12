@@ -32,7 +32,7 @@ with another toggle.
 
 ```kdl
 load_plugins {
-    "https://github.com/kxrur/zellij-zen/releases/download/v0.3.1/zellij-zen.wasm"
+    "https://github.com/kxrur/zellij-zen/releases/download/v0.3.2/zellij-zen.wasm"
 }
 ```
 
@@ -40,7 +40,7 @@ load_plugins {
 
 ```kdl
 bind "Alt v" {
-    MessagePlugin "https://github.com/kxrur/zellij-zen/releases/download/v0.3.1/zellij-zen.wasm" {
+    MessagePlugin "https://github.com/kxrur/zellij-zen/releases/download/v0.3.2/zellij-zen.wasm" {
         name "toggle"
     }
 }
