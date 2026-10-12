@@ -67,6 +67,16 @@ impl State {
             return;
         };
 
+        // Drop the global `cwd`. When re-applied, it would give the terminal panes
+        // a run that no longer matches the already-running terminals, causing the
+        // override to spawn duplicate terminals. Existing terminals are retained
+        // (with their own cwd) regardless.
+        if let Some(children) = layout_node.children_mut() {
+            children
+                .nodes_mut()
+                .retain(|node| node.name().value() != "cwd");
+        }
+
         for tab in tab_nodes_mut(layout_node) {
             if zen {
                 remove_bars(tab);
